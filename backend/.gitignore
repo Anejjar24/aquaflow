@@ -5,7 +5,7 @@ dist/
 
 # ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
-package-lock.json
+# NOTE: package-lock.json MUST be committed — required by Docker (npm ci)
 
 # ── Environment & Secrets ─────────────────────────────────────────────────────
 .env
@@ -17,7 +17,6 @@ package-lock.json
 
 # ── Test & Coverage ───────────────────────────────────────────────────────────
 coverage/
-
 *.lcov
 junit.xml
 
@@ -34,5 +33,3 @@ Thumbs.db
 *.swp
 *.swo
 *~
-
-coverage

@@ -4,7 +4,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Build-time env vars (baked into the React bundle by CRA)
 ARG REACT_APP_API_URL=http://localhost:3001/api

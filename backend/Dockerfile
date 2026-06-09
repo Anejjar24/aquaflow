@@ -1,28 +1,33 @@
 # ── Stage 1: Build ──────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+# node:20-slim is Debian-based (glibc) — bcrypt pre-built binaries work here,
+# no need for python3/make/g++ native compilation tools.
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 COPY . .
 RUN npm run build
 
 # ── Stage 2: Production ──────────────────────────────────────────────────────
-FROM node:20-alpine AS production
+FROM node:20-slim AS production
 
 WORKDIR /app
 
-# Install only production dependencies
+# Install wget (for healthcheck) + production dependencies
 COPY package*.json ./
-RUN npm ci --only=production --legacy-peer-deps && npm cache clean --force
+RUN apt-get update && apt-get install -y --no-install-recommends wget && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install --omit=dev --legacy-peer-deps && \
+    npm cache clean --force
 
 # Copy compiled output from builder
 COPY --from=builder /app/dist ./dist
 
 # Non-root user for security
-RUN addgroup -S aquaflow && adduser -S aquaflow -G aquaflow
+RUN groupadd -r aquaflow && useradd -r -g aquaflow aquaflow
 USER aquaflow
 
 EXPOSE 3001
