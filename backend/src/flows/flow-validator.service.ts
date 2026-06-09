@@ -17,6 +17,8 @@ const validTypes = new Set([
   'stream-filter', 'data-output',
   // Integration blocks
   'http-request',
+  // Custom calculation block
+  'custom-calc',
 ]);
 
 @Injectable()

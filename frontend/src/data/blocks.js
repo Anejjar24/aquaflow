@@ -524,7 +524,9 @@ export const workflowBlocks = [
 
       // ── Time range ─────────────────────────────────────────────────────────
       { name: "timeMode", label: "Time Range", type: "select", defaultValue: "all_data",
-        options: ["all_data", "custom_range"] },
+        options: ["all_data", "last_n_minutes", "custom_range"] },
+      { name: "periodMinutes", label: "Period (minutes)", type: "number", defaultValue: 60,
+        showWhen: { field: "timeMode", values: ["last_n_minutes"] } },
       { name: "startDate", label: "Start Date / Time",  type: "datetime-local", defaultValue: "",
         showWhen: { field: "timeMode", values: ["custom_range"] } },
       { name: "endDate",   label: "End Date / Time",    type: "datetime-local", defaultValue: "",

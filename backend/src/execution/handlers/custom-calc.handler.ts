@@ -124,11 +124,22 @@ export class CustomCalcHandler {
 
   private resolveTimeRange(node: WorkflowNode): { startDate?: Date; endDate?: Date } {
     const timeMode = String(node.data?.timeMode ?? 'all_data');
-    if (timeMode !== 'custom_range') return {};
 
-    const startDate = node.data?.startDate ? new Date(String(node.data.startDate)) : undefined;
-    const endDate   = node.data?.endDate   ? new Date(String(node.data.endDate))   : undefined;
-    return { startDate, endDate };
+    // last_n_minutes: sliding window relative to now
+    if (timeMode === 'last_n_minutes') {
+      const minutes = Number(node.data?.periodMinutes ?? 60);
+      return { startDate: new Date(Date.now() - minutes * 60_000) };
+    }
+
+    // custom_range: explicit start / end dates
+    if (timeMode === 'custom_range') {
+      const startDate = node.data?.startDate ? new Date(String(node.data.startDate)) : undefined;
+      const endDate   = node.data?.endDate   ? new Date(String(node.data.endDate))   : undefined;
+      return { startDate, endDate };
+    }
+
+    // all_data: no date filter (fetch everything, capped at 50 000 records)
+    return {};
   }
 
   // ── Data fetching ────────────────────────────────────────────────────────────
