@@ -1,0 +1,53 @@
+# ── Secrets & Environment Files ──────────────────────────────────────────────
+# Never commit real credentials — use .env.example as the template
+.env.prod
+.env.local
+.env.staging
+# Backend and frontend may each have their own .env — exclude all except examples
+backend/.env
+frontend/.env
+# Allow examples to be committed
+!**/.env.example
+!.env.example
+
+# ── Mosquitto Password File ───────────────────────────────────────────────────
+# Generated with mosquitto_passwd — contains hashed credentials
+mosquitto/config/passwd
+
+# ── Build & Compilation Artifacts ────────────────────────────────────────────
+backend/dist/
+frontend/build/
+
+# ── Test Coverage Reports ─────────────────────────────────────────────────────
+coverage/
+backend/coverage/
+frontend/coverage/
+*.lcov
+
+# ── Python / PySpark Artifacts ───────────────────────────────────────────────
+data-pipeline/__pycache__/
+data-pipeline/**/__pycache__/
+data-pipeline/.pytest_cache/
+data-pipeline/**/*.pyc
+data-pipeline/spark_jobs/__pycache__/
+/tmp/spark-checkpoints/
+
+# ── TypeScript build info ─────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ── Node Modules ─────────────────────────────────────────────────────────────
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+mosquitto/log/
+
+# ── OS / Editor Files ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,33 @@
+# ── Build Output ─────────────────────────────────────────────────────────────
+build/
+.eslintcache
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ── Environment & Secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.staging
+# Keep the example template
+!.env.example
+
+# ── Test & Coverage ───────────────────────────────────────────────────────────
+coverage/
+*.lcov
+junit.xml
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ── OS / Editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

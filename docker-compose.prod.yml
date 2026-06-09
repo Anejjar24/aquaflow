@@ -1,0 +1,525 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AquaFlow — Production Docker Compose
+# ─────────────────────────────────────────────────────────────────────────────
+# PREREQUISITES (run once before first start):
+#
+#   1. Create env file:
+#        cp .env.example .env.prod
+#        # Edit .env.prod — fill in ALL "REQUIRED" values
+#
+#   2. Generate Mosquitto password file (MQTT auth):
+#        docker run --rm eclipse-mosquitto:2 \
+#          sh -c "mosquitto_passwd -b /dev/stdout $MQTT_USERNAME $MQTT_PASSWORD" \
+#          > mosquitto/config/passwd
+#
+#   3. Verify secrets are NOT committed:
+#        grep -q ".env.prod" .gitignore  # should match
+#        grep -q "passwd" .gitignore     # should match
+#
+# START:
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# NOTES:
+#   • Postgres (5432) and Redis (6379) are NOT exposed to the host
+#   • Backend port 3001 is internal — add nginx/Traefik in front for HTTPS
+#   • Frontend listens on port 80 — configure SSL termination separately
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: '3.8'
+
+services:
+
+  # ── PostgreSQL 15 ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: timescale/timescaledb:2.14.2-pg15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    # ↑ No `ports:` — Postgres is reachable only within aquaflow-network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  # ── Redis 7 ────────────────────────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    # Password-protected + AOF persistence + LRU eviction cap
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --maxmemory 96mb
+      --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}   # exposed to container for health check
+    volumes:
+      - redis_data:/data
+    # ↑ No `ports:` — Redis reachable only within aquaflow-network
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" ping | grep -q PONG || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.20'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '3'
+
+  # ── Eclipse Mosquitto 2 ────────────────────────────────────────────────────
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./mosquitto/config/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/config/passwd:/mosquitto/config/passwd:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    ports:
+      - '9001:9001'   # WebSocket — needed by frontend real-time connection
+    # MQTT port 1883 is NOT exposed — backend connects via internal network only
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME}     # needed inside container for health check
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+    healthcheck:
+      test:
+        - 'CMD-SHELL'
+        - >
+          mosquitto_sub -h localhost -p 1883
+          -t "$$SYS/broker/uptime" -C 1 -W 3
+          -u "$$MQTT_USERNAME" -P "$$MQTT_PASSWORD"
+          2>/dev/null || exit 1
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 10s
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '3'
+
+  # ── MinIO — S3-compatible data lake ─────────────────────────────────────────
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9002"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    # ↑ No `ports:` — MinIO reachable only within aquaflow-network
+    expose:
+      - '9000'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:9000/minio/health/live || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+        mc mb --ignore-existing local/aquaflow-lake;
+        mc mb --ignore-existing local/aquaflow-lake/raw/sensors;
+        mc mb --ignore-existing local/aquaflow-lake/processed/hourly;
+        mc mb --ignore-existing local/aquaflow-lake/processed/daily;
+        mc mb --ignore-existing local/aquaflow-lake/models;
+        mc anonymous set none local/aquaflow-lake;
+        echo 'MinIO bucket structure ready';
+        exit 0;
+      "
+    networks:
+      - aquaflow-network
+    restart: 'no'
+
+  # ── Apache Kafka 3 (KRaft mode — no Zookeeper) ──────────────────────────────
+
+  kafka:
+    image: bitnami/kafka:3.6
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_CFG_NUM_PARTITIONS: 3
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_CFG_LOG_RETENTION_HOURS: 168
+      KAFKA_CFG_LOG_RETENTION_BYTES: 1073741824
+    # ↑ No `ports:` — Kafka reachable only within aquaflow-network
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ['CMD-SHELL', 'kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null 2>&1 || exit 1']
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: '5'
+
+  # ── NestJS Backend ─────────────────────────────────────────────────────────
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: aquaflow-backend:${IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${POSTGRES_USER}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_NAME: ${POSTGRES_DB}
+      # Redis (with password)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # MQTT (with auth — MqttClient reads MQTT_USERNAME + MQTT_PASSWORD)
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      # CORS
+      FRONTEND_URL: ${FRONTEND_URL}
+      # SMTP (email notifications — all optional; disabled when SMTP_HOST is empty)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@aquaflow.io}
+      # Kafka
+      KAFKA_BROKERS: kafka:9092
+      # MinIO (data lake)
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: aquaflow-lake
+    # ↑ No `ports:` — backend is internal; add nginx/Traefik for HTTPS
+    expose:
+      - '3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3001/api/health 2>/dev/null | grep -q "\"status\":\"ok\"" || exit 1']
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: '5'
+
+  # ── Data Pipeline: Kafka → MinIO archival consumer ──────────────────────────
+
+  kafka-to-minio:
+    build:
+      context: ./data-pipeline
+      dockerfile: Dockerfile
+    image: aquaflow-kafka-to-minio:${IMAGE_TAG:-latest}
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_GROUP_ID: aquaflow-lake-archiver
+      KAFKA_TOPIC: sensors.readings
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: aquaflow-lake
+      BATCH_SIZE: '1000'
+      FLUSH_SECS: '120'
+      LOG_LEVEL: INFO
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.20'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  # ── Apache Spark — batch & streaming jobs ───────────────────────────────────
+
+  spark-master:
+    build:
+      context: ./data-pipeline/spark_jobs
+      dockerfile: Dockerfile
+    image: aquaflow-spark:${IMAGE_TAG:-latest}
+    environment:
+      SPARK_MODE: master
+      SPARK_MASTER_HOST: spark-master
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: aquaflow-lake
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BROKERS: kafka:9092
+    expose:
+      - '7077'
+    depends_on:
+      minio:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+
+  spark-worker:
+    build:
+      context: ./data-pipeline/spark_jobs
+      dockerfile: Dockerfile
+    image: aquaflow-spark:${IMAGE_TAG:-latest}
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_CORES: 2
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: aquaflow-lake
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      - spark-master
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 2G
+
+  spark-anomaly-detector:
+    build:
+      context: ./data-pipeline/spark_jobs
+      dockerfile: Dockerfile
+    image: aquaflow-spark:${IMAGE_TAG:-latest}
+    command: >
+      spark-submit
+        --master spark://spark-master:7077
+        --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+        /opt/spark-jobs/streaming_anomaly_detector.py
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_INPUT_TOPIC: sensors.readings
+      KAFKA_OUTPUT_TOPIC: sensors.anomalies
+      CHECKPOINT_DIR: /tmp/spark-checkpoints/anomaly-detector
+      Z_SCORE_THRESHOLD: '2.5'
+      WINDOW_DURATION: 5 minutes
+      SLIDE_DURATION: 1 minute
+      WATERMARK_DELAY: 2 minutes
+    depends_on:
+      - spark-master
+      - spark-worker
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+
+  # ── React Frontend (nginx) ─────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Baked into the React bundle at build time by CRA
+        REACT_APP_API_URL: ${REACT_APP_API_URL}
+        REACT_APP_WS_URL: ${REACT_APP_WS_URL}
+    image: aquaflow-frontend:${IMAGE_TAG:-latest}
+    ports:
+      - '80:80'
+      # For HTTPS add: - '443:443'
+      # Then mount SSL certs or put Traefik/Certbot in front of this container
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - aquaflow-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.20'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '3'
+
+# ── Volumes ────────────────────────────────────────────────────────────────
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  mosquitto_data:
+    driver: local
+  mosquitto_logs:
+    driver: local
+  kafka_data:
+    driver: local
+  minio_data:
+    driver: local
+
+# ── Networks ───────────────────────────────────────────────────────────────
+
+networks:
+  aquaflow-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
