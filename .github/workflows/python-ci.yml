@@ -137,7 +137,7 @@ jobs:
 
       - name: Extract metadata (kafka-to-minio)
         id: meta-pipeline
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.pipeline }}
           tags: |
