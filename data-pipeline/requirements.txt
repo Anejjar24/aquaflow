@@ -4,4 +4,4 @@
 kafka-python==2.0.2          # Pure-Python Kafka client (no native deps)
 pyarrow==15.0.2              # Parquet read/write + columnar format
 boto3==1.34.69               # AWS S3 SDK — used for MinIO (S3-compatible)
-botocore==1.34.69            # boto3 dependency (pinned to match)
+botocore==1.43.28            # boto3 dependency (pinned to match)
