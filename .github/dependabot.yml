@@ -33,6 +33,10 @@ updates:
     labels: [dependencies, frontend]
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      # Major version bumps require manual testing — UI breaking changes
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # ── Python (Data Pipeline) ──────────────────────────────────────────────────
   - package-ecosystem: pip
