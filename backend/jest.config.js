@@ -14,4 +14,8 @@ module.exports = {
   moduleNameMapper: {
     '^src/(.*)$': '<rootDir>/src/$1',
   },
+  // Suppress NestJS Logger output during test runs (error logs from error-handling tests)
+  setupFiles: ['<rootDir>/jest.setup.js'],
+  // Raise slow-test threshold so timing never appears in red (ts-jest compile time is expected)
+  slowTestThreshold: 120,
 };

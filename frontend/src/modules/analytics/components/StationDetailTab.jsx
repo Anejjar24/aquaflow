@@ -362,58 +362,98 @@ export default function StationDetailTab() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Station + period pickers ───────────────────────────────────────── */}
-      <Row className="mb-4 align-items-end">
-        <Col md="5" className="mb-3 mb-md-0">
-          <FormGroup className="mb-0">
-            <Label className="form-control-label text-sm">Select station</Label>
-            <Input
-              type="select"
-              value={selectedStationId}
-              onChange={(e) => setSelectedStationId(e.target.value)}
-              style={{ maxWidth: 340 }}
+      {/* ── Filters ───────────────────────────────────────────────────────── */}
+      <Card className="shadow mb-4">
+        <CardBody className="py-3 px-4">
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <span
+              className="text-xs text-uppercase font-weight-bold text-muted"
+              style={{ letterSpacing: '0.06em' }}
             >
-              <option value="">— Choose a monitoring station —</option>
-              {stations.map((st) => (
-                <option key={st.id} value={st.id}>
-                  {st.name}
-                  {st.openAlerts > 0 ? ` ⚠ ${st.openAlerts} alert${st.openAlerts > 1 ? 's' : ''}` : ''}
-                </option>
-              ))}
-            </Input>
-          </FormGroup>
-        </Col>
-
-        <Col md="auto" className="mb-3 mb-md-0">
-          <Label className="form-control-label text-sm">Period</Label>
-          <div className="d-flex" style={{ gap: 6 }}>
-            {[
-              { label: '24 h', hours: 24  },
-              { label: '7 d',  hours: 168 },
-            ].map(({ label, hours }) => (
-              <button
-                key={hours}
-                onClick={() => setPeriod(hours)}
-                className={`btn btn-sm ${period === hours ? 'btn-primary' : 'btn-secondary'}`}
+              <i className="ni ni-ui-04 mr-1" />
+              Filters
+            </span>
+            {selectedStation && (
+              <Badge
+                color={STATUS_COLOR[selectedStation.status] || 'secondary'}
+                className="text-sm px-3 py-1"
               >
-                {label}
-              </button>
-            ))}
+                <i className="ni ni-building mr-1" />
+                {selectedStation.name} — {selectedStation.status}
+              </Badge>
+            )}
           </div>
-        </Col>
 
-        {selectedStation && (
-          <Col md="auto" className="ml-auto mb-3 mb-md-0">
-            <Badge
-              color={STATUS_COLOR[selectedStation.status] || 'secondary'}
-              className="text-sm px-3 py-2"
-            >
-              <i className="ni ni-building mr-1" />
-              {selectedStation.name} — {selectedStation.status}
-            </Badge>
-          </Col>
-        )}
-      </Row>
+          <Row className="align-items-end" style={{ rowGap: 12 }}>
+            <Col md="5" className="mb-0">
+              <FormGroup className="mb-0">
+                <Label className="form-control-label text-sm">Station</Label>
+                <Input
+                  type="select"
+                  value={selectedStationId}
+                  onChange={(e) => setSelectedStationId(e.target.value)}
+                  style={{ maxWidth: 340 }}
+                >
+                  <option value="">— Choose a monitoring station —</option>
+                  {stations.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name}
+                      {st.openAlerts > 0 ? ` ⚠ ${st.openAlerts} alert${st.openAlerts > 1 ? 's' : ''}` : ''}
+                    </option>
+                  ))}
+                </Input>
+              </FormGroup>
+            </Col>
+
+            <Col md="auto" className="mb-0">
+              <Label className="form-control-label text-sm d-block">Period</Label>
+              <div className="d-flex" style={{ gap: 6 }}>
+                {[
+                  { label: '24 h', hours: 24  },
+                  { label: '7 d',  hours: 168 },
+                ].map(({ label, hours }) => (
+                  <button
+                    key={hours}
+                    onClick={() => setPeriod(hours)}
+                    className={`btn btn-sm ${period === hours ? 'btn-primary' : 'btn-secondary'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Col>
+
+            {selectedStation && stationSensors.length > 0 && (
+              <Col md="5" className="mb-0">
+                <FormGroup className="mb-0">
+                  <Label className="form-control-label text-sm">Sensor</Label>
+                  <Input
+                    type="select"
+                    value={selectedSensorId}
+                    onChange={(e) => setSelectedSensorId(e.target.value)}
+                    style={{ maxWidth: 340 }}
+                  >
+                    <option value="">— Choose a sensor —</option>
+                    {stationSensors.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.type} · {s.unit})
+                        {s.status !== 'active' ? ` — ${s.status}` : ''}
+                      </option>
+                    ))}
+                  </Input>
+                </FormGroup>
+              </Col>
+            )}
+          </Row>
+
+          {selectedStation && stationSensors.length === 0 && (
+            <p className="text-xs text-muted mt-3 mb-0">
+              <i className="ni ni-info mr-1" />
+              No sensor records for this station yet — data populates automatically once sensors begin reporting.
+            </p>
+          )}
+        </CardBody>
+      </Card>
 
       {/* ── No station selected placeholder ───────────────────────────────── */}
       {!selectedStationId && (
@@ -468,15 +508,19 @@ export default function StationDetailTab() {
 
           {/* Health progress bar */}
           <Col xs="12">
-            <div className="d-flex align-items-center" style={{ gap: 10 }}>
-              <small className="text-muted" style={{ width: 110 }}>Sensor health</small>
-              <Progress
-                value={healthPct}
-                color={healthPct >= 80 ? 'success' : healthPct >= 50 ? 'warning' : 'danger'}
-                style={{ flex: 1, height: 6, borderRadius: 3 }}
-              />
-              <small className="text-muted" style={{ width: 36 }}>{healthPct}%</small>
-            </div>
+            <Card className="shadow-sm mt-1">
+              <CardBody className="py-2 px-4">
+                <div className="d-flex align-items-center" style={{ gap: 10 }}>
+                  <small className="text-muted font-weight-bold" style={{ width: 110 }}>Sensor health</small>
+                  <Progress
+                    value={healthPct}
+                    color={healthPct >= 80 ? 'success' : healthPct >= 50 ? 'warning' : 'danger'}
+                    style={{ flex: 1, height: 6, borderRadius: 3 }}
+                  />
+                  <small className="text-muted" style={{ width: 36 }}>{healthPct}%</small>
+                </div>
+              </CardBody>
+            </Card>
           </Col>
         </Row>
       )}
@@ -519,37 +563,6 @@ export default function StationDetailTab() {
             </Card>
           </Col>
         </Row>
-      )}
-
-      {/* ── Sensor picker ─────────────────────────────────────────────────── */}
-      {selectedStation && stationSensors.length > 0 && (
-        <Row className="mb-4 align-items-end">
-          <Col md="5">
-            <FormGroup className="mb-0">
-              <Label className="form-control-label text-sm">Drill down to a specific sensor</Label>
-              <Input
-                type="select"
-                value={selectedSensorId}
-                onChange={(e) => setSelectedSensorId(e.target.value)}
-                style={{ maxWidth: 340 }}
-              >
-                <option value="">— Choose a sensor —</option>
-                {stationSensors.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.type} · {s.unit})
-                    {s.status !== 'active' ? ` — ${s.status}` : ''}
-                  </option>
-                ))}
-              </Input>
-            </FormGroup>
-          </Col>
-        </Row>
-      )}
-
-      {selectedStation && stationSensors.length === 0 && (
-        <div className="alert alert-info mb-4">
-          No sensor records loaded for this station. Sensor data populates automatically — refresh the page if sensors were recently added.
-        </div>
       )}
 
       {/* ── Sensor detail panel ────────────────────────────────────────────── */}
@@ -611,22 +624,26 @@ export default function StationDetailTab() {
                 {/* Threshold band indicator */}
                 {(sensorStats.sensor?.minThreshold != null || sensorStats.sensor?.maxThreshold != null) && (
                   <Col xs="12" className="mb-2">
-                    <div className="d-flex align-items-center flex-wrap" style={{ gap: 12 }}>
-                      <small className="text-muted">Operating range:</small>
-                      {sensorStats.sensor?.minThreshold != null && (
-                        <Badge color="info" className="text-sm">
-                          Min threshold: {sensorStats.sensor.minThreshold} {sensorStats.sensor.unit}
-                        </Badge>
-                      )}
-                      {sensorStats.sensor?.maxThreshold != null && (
-                        <Badge color="warning" className="text-sm">
-                          Max threshold: {sensorStats.sensor.maxThreshold} {sensorStats.sensor.unit}
-                        </Badge>
-                      )}
-                      <Badge color={sensorStats.sensor?.status === 'active' ? 'success' : 'secondary'}>
-                        {sensorStats.sensor?.status}
-                      </Badge>
-                    </div>
+                    <Card className="shadow-sm">
+                      <CardBody className="py-2 px-4">
+                        <div className="d-flex align-items-center flex-wrap" style={{ gap: 12 }}>
+                          <small className="text-muted font-weight-bold">Operating range:</small>
+                          {sensorStats.sensor?.minThreshold != null && (
+                            <Badge color="info" className="text-sm">
+                              Min threshold: {sensorStats.sensor.minThreshold} {sensorStats.sensor.unit}
+                            </Badge>
+                          )}
+                          {sensorStats.sensor?.maxThreshold != null && (
+                            <Badge color="warning" className="text-sm">
+                              Max threshold: {sensorStats.sensor.maxThreshold} {sensorStats.sensor.unit}
+                            </Badge>
+                          )}
+                          <Badge color={sensorStats.sensor?.status === 'active' ? 'success' : 'secondary'}>
+                            {sensorStats.sensor?.status}
+                          </Badge>
+                        </div>
+                      </CardBody>
+                    </Card>
                   </Col>
                 )}
               </>

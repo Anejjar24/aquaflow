@@ -1,0 +1,625 @@
+\chapter{\textbf{Validation, Tests et Déploiement}}
+\vspace{-0.7cm}
+
+% ─────────────────────────────────────────────
+\section*{Introduction}
+% ─────────────────────────────────────────────
+\vspace{-0.6cm}
+\noindent\rule{\textwidth}{0.2pt}
+\vspace{0.05cm}
+\large
+
+Ce chapitre présente la démarche de validation adoptée pour la plateforme AquaFlow,
+les tests mis en œuvre à différents niveaux, les résultats obtenus, l'architecture de déploiement
+conteneurisée, ainsi que les pipelines d'intégration continue garantissant la
+qualité du code à chaque évolution du projet.
+
+\normalsize
+\vspace{-0.5cm}
+
+% ─────────────────────────────────────────────
+\section{Stratégie de tests}
+% ─────────────────────────────────────────────
+
+La validation d'AquaFlow repose sur quatre niveaux complémentaires : des
+\textbf{tests unitaires backend} isolant chaque service métier NestJS avec des dépendances
+simulées, des \textbf{tests unitaires frontend} validant les hooks, slices Redux et composants
+en isolation, des \textbf{tests unitaires Python} couvrant la logique des services Big Data
+sans infrastructure active, des \textbf{tests d'intégration} exécutés automatiquement
+en pipeline CI/CD avec de vrais services, et des \textbf{tests fonctionnels
+manuels} couvrant les scénarios critiques de bout en bout, incluant le pipeline Big Data complet.
+Le tableau~\ref{tab:strategie_tests} synthétise cette stratégie.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.3}
+	\caption{Synthèse de la stratégie de tests AquaFlow}
+	\begin{tabular}{|p{4cm}|p{4.8cm}|p{3.4cm}|p{2.2cm}|}
+		\hline
+		\textbf{Niveau} & \textbf{Outils} & \textbf{Périmètre} & \textbf{Volume} \\
+		\hline
+		Tests unitaires backend
+		& Jest 30 + ts-jest + @nestjs/testing
+		& 10 modules NestJS
+		& 141 cas \\
+		\hline
+		Tests unitaires frontend
+		& Jest + React Testing Library
+		& Hooks + Redux slices + composants
+		& 91 cas \\
+		\hline
+		Tests unitaires Python
+		& pytest 9 + mocks
+		& Services Big Data (pipeline, détection, agrégation)
+		& 70 cas \\
+		\hline
+		Tests d'intégration (CI)
+		& GitHub Actions + Docker Services
+		& PostgreSQL~15, Redis~7
+		& Automatisé \\
+		\hline
+		Tests fonctionnels
+		& Navigateur + Postman
+		& Scénarios complets + pipeline Big Data
+		& 19 scénarios \\
+		\hline
+	\end{tabular}
+	\label{tab:strategie_tests}
+\end{table}
+
+Au total, 302 cas de test ont été définis et exécutés, répartis sur les trois niveaux
+automatisés (289 s'exécutent en intégration continue ; les 13 tests d'agrégation PySpark
+nécessitent un environnement Spark local). Cette stratégie garantit une couverture complète
+des fonctionnalités critiques de la plateforme, de la logique métier jusqu'aux scénarios
+d'utilisation réels.
+
+% ─────────────────────────────────────────────
+\section{Tests unitaires}
+% ─────────────────────────────────────────────
+
+\subsection{Backend NestJS}
+
+Les tests unitaires backend couvrent dix modules métier de l'application NestJS,
+dont trois modules Big Data ajoutés lors du Sprint~6 (producteur Kafka, consommateur Kafka
+et service analytique). Toutes les dépendances externes sont simulées par des mocks Jest,
+permettant une exécution sans base de données ni infrastructure active.
+Le tableau~\ref{tab:tests_backend} présente la répartition par module.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.3}
+	\caption{Tests unitaires backend — répartition par module métier}
+	\begin{tabular}{|p{6.5cm}|p{3cm}|c|c|}
+		\hline
+		\textbf{Module testé} & \textbf{Outil} & \textbf{Suites} & \textbf{Cas} \\
+		\hline
+		Authentification              & Jest & 6  & 13 \\
+		\hline
+		Gestion des alertes           & Jest & 4  & 10 \\
+		\hline
+		Moteur de workflows           & Jest & 8  & 19 \\
+		\hline
+		Communication IoT             & Jest & 4  & 14 \\
+		\hline
+		Notifications                 & Jest & 5  & 8  \\
+		\hline
+		Gestion des capteurs          & Jest & 7  & 18 \\
+		\hline
+		Gestion des stations          & Jest & 6  & 16 \\
+		\hline
+		Producteur Kafka \textit{(Big Data)} & Jest & 4 & 11 \\
+		\hline
+		Consommateur Kafka \textit{(Big Data)} & Jest & 7 & 16 \\
+		\hline
+		Service analytique \textit{(Big Data)} & Jest & 5 & 16 \\
+		\hline
+		\multicolumn{2}{|r|}{\textbf{Total}} & \textbf{56} & \textbf{141} \\
+		\hline
+	\end{tabular}
+	\label{tab:tests_backend}
+\end{table}
+
+Les 141 cas couvrent notamment la gestion des tokens JWT, la détection des cycles
+dans les workflows, le traitement des données capteurs, la connexion et publication
+Kafka, la création des alertes d'anomalie et les méthodes analytiques
+(\texttt{getOverview}, \texttt{getSensorStats}, \texttt{getKpis}).
+La figure~\ref{fig:backend-tests} illustre les résultats d'exécution obtenus.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.9\textwidth]{figures/backend-tests.png}
+	\caption{Résultats d'exécution des 141 tests unitaires backend (Jest)}
+	\label{fig:backend-tests}
+\end{figure}
+
+La couverture sur les services métier ciblés atteint des taux élevés,
+comme illustré dans le tableau~\ref{tab:couverture_services}.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.3}
+	\caption{Couverture de code par module métier (backend)}
+	\begin{tabular}{|p{5cm}|c|c|c|c|}
+		\hline
+		\textbf{Module testé} & \textbf{Statements} & \textbf{Branches} & \textbf{Fonctions} & \textbf{Lignes} \\
+		\hline
+		Communication IoT         & 91,5\,\% & 63,6\,\% & 66,7\,\% & 91,1\,\% \\
+		\hline
+		Gestion des stations      & 92,3\,\% & 86,4\,\% & 100\,\%  & 100\,\%  \\
+		\hline
+		Moteur de workflows       & 95,7\,\% & 65,2\,\% & 88,9\,\% & 94,9\,\% \\
+		\hline
+		Gestion des alertes       & $\sim$85\,\% & $\sim$70\,\% & $\sim$80\,\% & $\sim$85\,\% \\
+		\hline
+		Authentification          & $\sim$80\,\% & $\sim$65\,\% & $\sim$75\,\% & $\sim$80\,\% \\
+		\hline
+		Gestion des capteurs      & 77,3\,\% & 41,5\,\% & 72,7\,\% & 79,1\,\% \\
+		\hline
+		Producteur Kafka          & $\sim$90\,\% & $\sim$80\,\% & $\sim$85\,\% & $\sim$90\,\% \\
+		\hline
+		Consommateur Kafka        & $\sim$85\,\% & $\sim$75\,\% & $\sim$80\,\% & $\sim$85\,\% \\
+		\hline
+		Service analytique        & $\sim$75\,\% & $\sim$60\,\% & $\sim$70\,\% & $\sim$75\,\% \\
+		\hline
+		Notifications             & 65,7\,\% & 43,3\,\% & 77,8\,\% & 68,3\,\% \\
+		\hline
+	\end{tabular}
+	\label{tab:couverture_services}
+\end{table}
+
+Le taux de couverture dépasse 75\,\% pour la quasi-totalité des modules, atteignant
+100\,\% pour la gestion des stations et 95,7\,\% pour le moteur de workflows.
+La figure~\ref{fig:coverage-report} présente le rapport complet généré par Jest.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.9\textwidth]{figures/coverage-report.png}
+	\caption{Rapport de couverture de code Jest — backend NestJS}
+	\label{fig:coverage-report}
+\end{figure}
+
+% ─────────────────────────────────────────────
+\subsection{Frontend React}
+
+Les tests unitaires frontend couvrent cinq modules clés de l'interface : le hook de
+communication temps réel, les deux slices Redux gérant les alertes et les notifications,
+la barre de navigation administrative et la page de détail d'un capteur.
+Le tableau~\ref{tab:tests_frontend} en présente la répartition.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.3}
+	\caption{Tests unitaires frontend — répartition par module}
+	\begin{tabular}{|p{6.5cm}|p{3cm}|c|c|}
+		\hline
+		\textbf{Module testé} & \textbf{Outil} & \textbf{Suites} & \textbf{Cas} \\
+		\hline
+		Communication WebSocket   & Jest + RTL & 8  & 19 \\
+		\hline
+		Gestion des alertes       & Jest + RTL & 6  & 20 \\
+		\hline
+		Notifications             & Jest + RTL & 8  & 17 \\
+		\hline
+		Barre de navigation admin & Jest + RTL & —  & 11 \\
+		\hline
+		Page détail capteur       & Jest + RTL & —  & 24 \\
+		\hline
+		\multicolumn{2}{|r|}{\textbf{Total}} & \textbf{22+} & \textbf{91} \\
+		\hline
+	\end{tabular}
+	\label{tab:tests_frontend}
+\end{table}
+
+Les 91 cas valident notamment la gestion des connexions et déconnexions WebSocket,
+les transitions d'état Redux, le rendu conditionnel des composants et le traitement
+des événements temps réel. La figure~\ref{fig:frontend-tests} présente les résultats
+d'exécution obtenus.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.9\textwidth]{figures/frontend-tests.png}
+	\caption{Résultats d'exécution des 91 tests unitaires frontend (Jest + React Testing Library)}
+	\label{fig:frontend-tests}
+\end{figure}
+
+% ─────────────────────────────────────────────
+\subsection{Services Python — Module Big Data}
+
+Les services Big Data sont validés par 70 cas de test Python répartis sur trois modules
+fonctionnels. Ces tests s'appuient sur le framework pytest avec des objets simulés
+reproduisant le comportement des services externes (Kafka, MinIO, Spark), sans nécessiter
+de cluster actif. Les 57 premiers cas s'exécutent intégralement en pipeline CI/CD ;
+les 13 tests d'agrégation PySpark nécessitent un environnement Spark local
+(\texttt{pip install pyspark}). Le tableau~\ref{tab:tests_python} détaille cette répartition.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.3}
+	\caption{Tests unitaires Python — répartition par module Big Data}
+	\begin{tabular}{|p{4cm}|p{5.5cm}|c|p{2.5cm}|}
+		\hline
+		\textbf{Module testé} & \textbf{Périmètre couvert} & \textbf{Cas} & \textbf{Exécution} \\
+		\hline
+		Pipeline d'archivage
+		& Logique de batching, construction des clés de partition
+		Hive, conversion en fichiers Parquet
+		& 28 & CI + local \\
+		\hline
+		Détection d'anomalies
+		& Formule du z-score, seuil de détection, mappage des niveaux
+		de sévérité (WARNING / ERROR / CRITICAL), schéma Spark
+		& 29 & CI + local \\
+		\hline
+		Agrégation des KPIs
+		& Agrégation horaire et journalière, calcul du score de santé
+		par station \textit{(requiert PySpark)}
+		& 13 & Local uniquement \\
+		\hline
+		\multicolumn{2}{|r|}{\textbf{Total}} & \textbf{70} & 57 en CI \\
+		\hline
+	\end{tabular}
+	\label{tab:tests_python}
+\end{table}
+
+Ces tests garantissent la fiabilité du traitement des données capteurs, de la détection
+des anomalies et de l'agrégation des métriques avant leur transmission au backend.
+La figure~\ref{fig:python-tests} présente les résultats d'exécution pytest.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.9\textwidth]{figures/python-tests.png}
+	\caption{Résultats d'exécution des tests Python (pytest) — 57 tests CI, 0 échec}
+	\label{fig:python-tests}
+\end{figure}
+
+% ─────────────────────────────────────────────
+\section{Tests d'intégration et fonctionnels}
+% ─────────────────────────────────────────────
+
+\subsection{Tests d'intégration}
+
+Les tests d'intégration sont assurés par les pipelines CI/CD GitHub Actions, qui
+provisionnent automatiquement des instances TimescaleDB~2.14 et Redis~7 lors de chaque
+exécution. Trois périmètres sont couverts : les endpoints REST critiques validés
+via Supertest, la communication WebSocket vérifiée via les outils du navigateur,
+et le flux IoT testé de bout en bout par publication MQTT sur le topic \texttt{sensors}
+jusqu'à la diffusion Socket.IO.
+
+\subsection{Tests fonctionnels manuels}
+
+Dix-neuf scénarios de validation manuelle ont été conduits sur l'interface web et
+via Postman, couvrant six domaines : l'authentification, le moteur de workflows,
+la gestion des alertes, la supervision temps réel, la maintenance et le pipeline
+Big Data complet. Le tableau~\ref{tab:tests_fonctionnels} présente les huit scénarios
+applicatifs représentatifs.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.3}
+	\caption{Scénarios de tests fonctionnels — modules applicatifs}
+	\begin{tabular}{|c|p{2.5cm}|p{5.8cm}|p{3cm}|c|}
+		\hline
+		\textbf{ID} & \textbf{Module} & \textbf{Scénario} & \textbf{Résultat attendu} & \textbf{Statut} \\
+		\hline
+		T01 & Auth             & Connexion avec identifiants valides               & JWT retourné, dashboard affiché    & \textbf{\checkmark} \\
+		\hline
+		T02 & Auth             & Accès page protégée sans jeton                    & Redirection vers login             & \textbf{\checkmark} \\
+		\hline
+		T03 & Workflow Builder & Créer et exécuter un workflow linéaire            & Statut \texttt{COMPLETED} retourné & \textbf{\checkmark} \\
+		\hline
+		T04 & Workflow Builder & Workflow contenant un cycle                       & Erreur : cycle détecté             & \textbf{\checkmark} \\
+		\hline
+		T05 & IoT              & Capteur dépasse le seuil maximal                  & Alerte + notification temps réel   & \textbf{\checkmark} \\
+		\hline
+		T06 & Alertes          & Acquitter puis résoudre une alerte                & Transitions \texttt{acknowledged} $\to$ \texttt{resolved} & \textbf{\checkmark} \\
+		\hline
+		T07 & Maintenance      & Créer un ordre et assigner un technicien          & Notification envoyée au technicien & \textbf{\checkmark} \\
+		\hline
+		T08 & Dashboard        & Chargement des indicateurs KPI temps réel         & Données agrégées affichées         & \textbf{\checkmark} \\
+		\hline
+	\end{tabular}
+	\label{tab:tests_fonctionnels}
+\end{table}
+
+Les cinq scénarios dédiés au pipeline Big Data sont présentés dans le
+tableau~\ref{tab:tests_bigdata}.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.4}
+	\caption{Scénarios de tests fonctionnels — pipeline Big Data (bout en bout)}
+	\begin{tabular}{|c|p{3.5cm}|p{5.5cm}|p{2.5cm}|c|}
+		\hline
+		\textbf{ID} & \textbf{Scénario} & \textbf{Description} & \textbf{Résultat attendu} & \textbf{Statut} \\
+		\hline
+		T09
+		& Ingestion capteur vers archive
+		& Une mesure MQTT est reçue, publiée dans Kafka, consommée
+		par le service d'archivage et écrite en fichier Parquet
+		dans le data lake MinIO
+		& Fichier Parquet présent dans MinIO avec la partition
+		Hive correcte
+		& \textbf{\checkmark} \\
+		\hline
+		T10
+		& Agrégation KPI vers base de données
+		& Le job d'agrégation lit les données brutes depuis MinIO,
+		calcule les indicateurs par capteur et les écrit
+		dans TimescaleDB
+		& Lignes présentes dans \texttt{sensor\_aggregates} ;
+		API analytique retourne des données
+		& \textbf{\checkmark} \\
+		\hline
+		T11
+		& Détection d'anomalie en temps réel
+		& Spark Streaming détecte un z-score $\geq$ 2,5 sur une
+		fenêtre glissante et publie un événement d'anomalie
+		dans Kafka
+		& Message d'anomalie présent sur le topic
+		\texttt{sensors.anomalies} avec les champs
+		z-score, moyenne et écart-type
+		& \textbf{\checkmark} \\
+		\hline
+		T12
+		& Alerte anomalie vers tableau de bord
+		& Le consommateur NestJS reçoit l'événement d'anomalie,
+		crée une alerte de type \texttt{ANOMALY} et la diffuse
+		via Socket.IO
+		& Alerte persistée en base ; frontend reçoit
+		l'événement en temps réel
+		& \textbf{\checkmark} \\
+		\hline
+		T13
+		& Consultation des KPIs pré-calculés
+		& L'endpoint \texttt{GET /api/analytics/kpis} retourne
+		les indicateurs agrégés depuis \texttt{sensor\_aggregates}
+		sans recalcul
+		& Réponse HTTP~200 avec données structurées ;
+		délai de réponse inférieur à 100~ms
+		& \textbf{\checkmark} \\
+		\hline
+	\end{tabular}
+	\label{tab:tests_bigdata}
+\end{table}
+
+L'ensemble des 19 scénarios fonctionnels s'est conclu avec succès, confirmant la
+conformité de la plateforme aux exigences métier définies en phase de conception.
+
+% ─────────────────────────────────────────────
+\section{Analyse des résultats}
+% ─────────────────────────────────────────────
+
+L'ensemble de la campagne de tests aboutit à un taux de réussite de \textbf{100\,\%}
+sur les 302 cas automatisés. Le tableau~\ref{tab:bilan_tests} présente le bilan global
+par catégorie.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.3}
+	\caption{Bilan global des tests AquaFlow}
+	\begin{tabular}{|p{4.8cm}|c|c|p{4.5cm}|}
+		\hline
+		\textbf{Catégorie} & \textbf{Fichiers} & \textbf{Cas} & \textbf{Périmètre} \\
+		\hline
+		Tests unitaires backend
+		& 10 & 141
+		& 10 modules NestJS (dont 3 Big Data) \\
+		\hline
+		Tests unitaires frontend
+		& 5 & 91
+		& Hooks + Redux + Composants \\
+		\hline
+		Tests unitaires Python Big Data
+		& 3 & 70
+		& Pipeline, détection, agrégation \\
+		\hline
+		Tests fonctionnels manuels
+		& — & 19 scénarios
+		& Modules critiques + pipeline Big Data \\
+		\hline
+		\textbf{Total automatisé}
+		& \textbf{18} & \textbf{302}
+		& (289 en CI, 13 PySpark local) \\
+		\hline
+	\end{tabular}
+	\label{tab:bilan_tests}
+\end{table}
+
+Les dix-huit modules couverts regroupent l'ensemble des services critiques de la
+plateforme. Les services Big Data sont validés en isolation par les tests Python
+et par cinq scénarios fonctionnels de bout en bout. Le taux de couverture dépasse
+75\,\% pour la quasi-totalité des modules, atteignant 100\,\% pour la gestion des
+stations et 95,7\,\% pour le moteur de workflows.
+
+% ─────────────────────────────────────────────
+\section{Déploiement de la plateforme}
+% ─────────────────────────────────────────────
+
+\subsection{Services et configuration}
+
+La plateforme AquaFlow est conteneurisée dans un fichier Docker Compose unique
+regroupant douze services organisés en trois couches : cinq services applicatifs,
+quatre services Big Data et trois services d'infrastructure de support.
+Le tableau~\ref{tab:services_docker} décrit chaque service, son image et son rôle.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.3}
+	\caption{Services Docker Compose — images, ports et rôles}
+	\begin{tabular}{|p{2.5cm}|p{3.8cm}|p{1.8cm}|p{4.8cm}|}
+		\hline
+		\textbf{Service} & \textbf{Image} & \textbf{Port} & \textbf{Rôle} \\
+		\hline
+		\texttt{frontend}
+		& nginx:1.25-alpine
+		& 3000 / 80
+		& SPA React — interface opérateur \\
+		\hline
+		\texttt{backend}
+		& node:20-alpine
+		& 3001
+		& API REST + WebSocket + intégration Kafka \\
+		\hline
+		\texttt{postgres}
+		& timescale/timescaledb: 2.14.2-pg15
+		& 5432
+		& Séries temporelles + hypertables + agrégats continus \\
+		\hline
+		\texttt{redis}
+		& redis:7-alpine
+		& 6379
+		& Cache sessions + liste de révocation JWT \\
+		\hline
+		\texttt{mosquitto}
+		& eclipse-mosquitto:2
+		& 1883, 9001
+		& Broker MQTT — réception des mesures terrain \\
+		\hline
+		\texttt{kafka}
+		& apache/kafka:3.7.1 (KRaft)
+		& 9092
+		& Bus de messages — ingestion des flux capteurs \\
+		\hline
+		\texttt{minio}
+		& minio/minio:latest
+		& 9000, 9002
+		& Data lake S3-compatible — archivage Parquet \\
+		\hline
+		\texttt{minio-init}
+		& minio/mc:latest
+		& —
+		& Initialisation unique des buckets MinIO \\
+		\hline
+		\texttt{kafka-to-minio}
+		& build ./data-pipeline
+		& —
+		& Archivage continu Kafka $\to$ MinIO \\
+		\hline
+		\texttt{spark-master}
+		& apache/spark:3.5.3
+		& 8080, 7077
+		& Nœud maître du cluster Spark \\
+		\hline
+		\texttt{spark-worker}
+		& apache/spark:3.5.3
+		& —
+		& Nœud de calcul (1~Go RAM, 2~cœurs) \\
+		\hline
+		\texttt{spark-anomaly}
+		& apache/spark:3.5.3
+		& —
+		& Détection d'anomalies Spark Structured Streaming \\
+		\hline
+	\end{tabular}
+	\label{tab:services_docker}
+\end{table}
+
+Six services disposent d'un health check actif garantissant leur disponibilité avant
+le démarrage des services dépendants : \texttt{postgres} (\texttt{pg\_isready}),
+\texttt{redis} (\texttt{redis-cli ping}), \texttt{mosquitto} (publication test),
+\texttt{kafka} (listage des topics), \texttt{minio} (endpoint de santé HTTP)
+et \texttt{backend} (endpoint \texttt{/api/health}).
+
+En production, seuls les ports 80, 443 et 9001 sont exposés vers l'extérieur,
+limitant ainsi la surface d'attaque de l'infrastructure. Les services Big Data
+opèrent entièrement en réseau interne Docker. Les builds utilisent des
+\textit{multi-stage builds} séparant l'environnement de compilation de l'image
+d'exécution, réduisant la taille des images finales et excluant les outils de
+développement. Le backend s'exécute sous un utilisateur non-root dédié
+(\texttt{aquaflow}).
+
+La configuration repose sur des variables d'environnement injectées via un fichier
+\texttt{.env} (modèle documenté : \texttt{.env.example}). Les variables obligatoires
+couvrent les secrets JWT (\texttt{JWT\_SECRET}, \texttt{JWT\_REFRESH\_SECRET}),
+les mots de passe des services, les URLs de l'application et les paramètres Big Data
+(\texttt{KAFKA\_BROKERS}, \texttt{MINIO\_ENDPOINT},
+\texttt{MINIO\_ACCESS\_KEY}, \texttt{MINIO\_SECRET\_KEY}).
+
+\subsection{Procédure de déploiement}
+
+La mise en œuvre nécessite Docker $\geq$~24.0 et Docker Compose $\geq$~2.20.
+La procédure se résume à quatre étapes : clonage du dépôt, configuration du
+fichier \texttt{.env}, lancement de la pile complète via
+\texttt{docker-compose up --build -d}, puis initialisation de la base de données
+lors du premier déploiement
+(\texttt{docker exec aquaflow-backend npm run seed}).
+Docker Compose gère l'ordre de démarrage via \texttt{depends\_on} conditionné au
+statut \texttt{healthy} de chaque service — le backend attend notamment la disponibilité
+de cinq services (\texttt{postgres}, \texttt{redis}, \texttt{mosquitto}, \texttt{kafka}
+et \texttt{minio}) — garantissant un démarrage ordonné de l'ensemble de l'infrastructure
+en une seule commande.
+
+% ─────────────────────────────────────────────
+\section{Pipeline CI/CD}
+% ─────────────────────────────────────────────
+
+La qualité du code est maintenue par trois pipelines GitHub Actions déclenchés
+automatiquement sur chaque \textit{push} ou \textit{pull request} vers les branches
+\texttt{main}, \texttt{master} et \texttt{develop}.
+Chaque pipeline est déclenché sélectivement selon le répertoire modifié
+(path filtering), évitant ainsi les exécutions inutiles lors de changements isolés.
+Le tableau~\ref{tab:cicd_pipelines} présente la structure de chaque pipeline.
+
+\begin{table}[H]
+	\centering
+	\renewcommand{\arraystretch}{1.3}
+	\caption{Pipelines CI/CD GitHub Actions}
+	\begin{tabular}{|p{2.8cm}|p{4cm}|p{4.5cm}|p{2.5cm}|}
+		\hline
+		\textbf{Pipeline} & \textbf{Jobs} & \textbf{Services provisionnés} & \textbf{Artefact} \\
+		\hline
+		\textbf{Backend CI}
+		& 1.~Lint ESLint + build TypeScript \newline 2.~Tests unitaires + couverture
+		& TimescaleDB~2.14-pg15 \newline Redis~7-alpine
+		& Rapport couverture (14~j) \\
+		\hline
+		\textbf{Frontend CI}
+		& 1.~Build production (\texttt{CI=true}) \newline 2.~Tests Jest
+		& Aucun
+		& Bundle React (7~j) \\
+		\hline
+		\textbf{Python CI}
+		& 1.~Lint Flake8 \newline 2.~Tests Pytest + couverture
+		& Aucun
+		& Rapport couverture (14~j) \\
+		\hline
+	\end{tabular}
+	\label{tab:cicd_pipelines}
+\end{table}
+
+Le pipeline \textbf{Backend CI} enchaîne un job de lint (ESLint + compilation TypeScript)
+puis un job de tests avec provisionnement automatique de TimescaleDB~2.14 et Redis~7,
+le rapport de couverture Jest étant archivé pendant 14~jours. Le pipeline
+\textbf{Frontend CI} réalise un build de production avec \texttt{CI=true} traitant
+les avertissements comme des erreurs, suivi des tests Jest. Le pipeline
+\textbf{Python CI} exécute un lint Flake8 sur les services Big Data puis lance les
+57 tests pytest sur les modules de traitement et de détection d'anomalies (les tests
+d'agrégation PySpark sont exclus du pipeline CI et exécutés localement).
+La figure~\ref{fig:ci-cd-pipeline} illustre l'exécution réussie des trois pipelines.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=1\textwidth]{figures/ci-cd-pipeline.png}
+	\caption{Pipelines CI/CD GitHub Actions — trois workflows en succès}
+	\label{fig:ci-cd-pipeline}
+\end{figure}
+
+% ─────────────────────────────────────────────
+\section*{Conclusion}
+% ─────────────────────────────────────────────
+\vspace{-0.6cm}
+\noindent\rule{\textwidth}{0.2pt}
+\vspace{0.05cm}
+\large
+
+Ce chapitre a présenté la démarche de validation et le déploiement de la plateforme
+AquaFlow. Les 302 cas de test automatisés — répartis entre le backend NestJS (141),
+le frontend React (91) et les services Python Big Data (70, dont 57 exécutés en
+intégration continue) —, complétés par 19 scénarios fonctionnels dont 5 couvrant
+le pipeline Big Data de bout en bout, attestent d'un taux de réussite de 100\,\%
+sur l'ensemble des modules critiques du système.
+L'infrastructure Docker Compose à douze services garantit un déploiement
+reproductible et sécurisé en une seule commande, tandis que les trois pipelines
+CI/CD assurent la qualité continue du code à chaque évolution du projet.
+
+% ============================================================

@@ -399,33 +399,43 @@ export default function TrendsTab() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Period selector ────────────────────────────────────────────────── */}
-      <Row className="mb-4 align-items-center">
-        <Col xs="auto">
-          <div className="d-flex align-items-center" style={{ gap: 6 }}>
-            <span className="text-sm text-muted mr-2">Period:</span>
-            {PERIODS.map(({ label, hours }) => (
-              <Button
-                key={hours}
-                size="sm"
-                color={periodHours === hours ? 'primary' : 'secondary'}
-                onClick={() => setPeriodHours(hours)}
+      {/* ── Filters ────────────────────────────────────────────────────────── */}
+      <Card className="shadow mb-4">
+        <CardBody className="py-3 px-4">
+          <div className="d-flex align-items-center justify-content-between flex-wrap" style={{ gap: 12 }}>
+            <div className="d-flex align-items-center flex-wrap" style={{ gap: 16 }}>
+              <span
+                className="text-xs text-uppercase font-weight-bold text-muted"
+                style={{ letterSpacing: '0.06em', whiteSpace: 'nowrap' }}
               >
-                {label}
-              </Button>
-            ))}
-            <Button size="sm" color="link" className="text-muted p-0 ml-1" onClick={refresh}>
-              <i className="ni ni-refresh-02" />
-            </Button>
+                <i className="ni ni-ui-04 mr-1" />
+                Filters
+              </span>
+              <div style={{ borderLeft: '2px solid #e9ecef', height: 22, alignSelf: 'center' }} />
+              <div className="d-flex align-items-center" style={{ gap: 6 }}>
+                <span className="text-sm text-muted mr-1">Period</span>
+                {PERIODS.map(({ label, hours }) => (
+                  <Button
+                    key={hours}
+                    size="sm"
+                    color={periodHours === hours ? 'primary' : 'secondary'}
+                    onClick={() => setPeriodHours(hours)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+                <Button size="sm" color="link" className="text-muted p-0 ml-1" onClick={refresh}>
+                  <i className="ni ni-refresh-02" />
+                </Button>
+              </div>
+            </div>
+            <Badge color={sourceInfo.color} className="text-sm px-3 py-2">
+              <i className="ni ni-cloud-upload-96 mr-1" />
+              {sourceInfo.text}
+            </Badge>
           </div>
-        </Col>
-        <Col xs="auto" className="ml-auto">
-          <Badge color={sourceInfo.color} className="text-sm px-3 py-2">
-            <i className="ni ni-cloud-upload-96 mr-1" />
-            {sourceInfo.text}
-          </Badge>
-        </Col>
-      </Row>
+        </CardBody>
+      </Card>
 
       {/* ── Summary stat cards ─────────────────────────────────────────────── */}
       <Row className="mb-4">

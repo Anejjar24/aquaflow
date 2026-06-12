@@ -225,27 +225,37 @@ export default function AnomaliesTab() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Period selector + summary cards ────────────────────────────── */}
-      <Row className="mb-4 align-items-center">
-        <Col xs="auto">
-          <div className="d-flex align-items-center" style={{ gap: 6 }}>
-            <span className="text-sm text-muted mr-2">Period:</span>
-            {PERIODS.map(({ label, hours }) => (
-              <Button
-                key={hours}
-                size="sm"
-                color={periodHours === hours ? 'primary' : 'secondary'}
-                onClick={() => setPeriodHours(hours)}
-              >
-                {label}
+      {/* ── Filters ──────────────────────────────────────────────────────── */}
+      <Card className="shadow mb-4">
+        <CardBody className="py-3 px-4">
+          <div className="d-flex align-items-center flex-wrap" style={{ gap: 16 }}>
+            <span
+              className="text-xs text-uppercase font-weight-bold text-muted"
+              style={{ letterSpacing: '0.06em', whiteSpace: 'nowrap' }}
+            >
+              <i className="ni ni-ui-04 mr-1" />
+              Filters
+            </span>
+            <div style={{ borderLeft: '2px solid #e9ecef', height: 22, alignSelf: 'center' }} />
+            <div className="d-flex align-items-center" style={{ gap: 6 }}>
+              <span className="text-sm text-muted mr-1">Period</span>
+              {PERIODS.map(({ label, hours }) => (
+                <Button
+                  key={hours}
+                  size="sm"
+                  color={periodHours === hours ? 'primary' : 'secondary'}
+                  onClick={() => setPeriodHours(hours)}
+                >
+                  {label}
+                </Button>
+              ))}
+              <Button size="sm" color="link" className="text-muted p-0 ml-1" onClick={refresh}>
+                <i className="ni ni-refresh-02" />
               </Button>
-            ))}
-            <Button size="sm" color="link" className="text-muted p-0 ml-1" onClick={refresh}>
-              <i className="ni ni-refresh-02" />
-            </Button>
+            </div>
           </div>
-        </Col>
-      </Row>
+        </CardBody>
+      </Card>
 
       {/* Summary stat cards */}
       <Row className="mb-4">
