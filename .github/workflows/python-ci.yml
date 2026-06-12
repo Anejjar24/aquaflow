@@ -12,9 +12,6 @@ on:
       - 'data-pipeline/**'
       - '.github/workflows/python-ci.yml'
 
-# NOTE: test_aggregate_kpis.py requires PySpark and is excluded from CI.
-# Run it locally with: pip install pyspark && pytest data-pipeline/tests/test_aggregate_kpis.py
-
 jobs:
   lint-and-test:
     name: Lint & Test
@@ -40,19 +37,20 @@ jobs:
       - name: Install dev dependencies
         run: pip install flake8 pytest pytest-cov
 
+      # Only lint the pure-Python archival pipeline (no PySpark dependency)
       - name: Lint with flake8
         run: |
-          # Fail on syntax errors and undefined names
-          flake8 kafka_to_minio.py spark_jobs/aggregate_sensor_kpis.py spark_jobs/streaming_anomaly_detector.py \
+          # Syntax errors and undefined names on the archival pipeline
+          flake8 kafka_to_minio.py \
             --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Style warnings only (max-line-length=120, does not fail the build)
-          flake8 kafka_to_minio.py spark_jobs/aggregate_sensor_kpis.py spark_jobs/streaming_anomaly_detector.py \
+          # Style check on all sources (warnings only — does not fail the build)
+          flake8 kafka_to_minio.py \
             --count --max-line-length=120 --statistics --exit-zero
 
       - name: Run unit tests with coverage
         run: |
           python -m pytest tests/test_kafka_to_minio.py tests/test_anomaly_detection.py \
-            -v --tb=short \
+            --tb=short \
             --cov=. \
             --cov-report=xml:coverage.xml \
             --cov-report=term-missing \

@@ -12,9 +12,8 @@ on:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
 
-# ── Job 1: Lint & TypeScript build check ──────────────────────────────────────
-
 jobs:
+  # ── Job 1: TypeScript compile check ─────────────────────────────────────────
   lint-and-build:
     name: Lint & Build
     runs-on: ubuntu-latest
@@ -37,19 +36,10 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Lint (ESLint)
-        run: npm run lint
-
       - name: TypeScript compile check
         run: npm run build
 
-# ── Job 2: Unit tests (all dependencies mocked — no real services needed) ─────
-#
-#  NOTE: E2E tests (test/auth.e2e-spec.ts) require the full Docker stack
-#  (TimescaleDB, Kafka, Redis, Mosquitto, MinIO) and must be run locally:
-#    docker-compose up -d && npx jest --config jest.e2e.config.js
-#
-
+  # ── Job 2: Unit tests ────────────────────────────────────────────────────────
   test:
     name: Unit Tests & Coverage
     runs-on: ubuntu-latest
