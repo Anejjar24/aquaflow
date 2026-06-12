@@ -160,7 +160,7 @@ jobs:
           file: data-pipeline/spark_jobs/Dockerfile
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/spark-jobs:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/spark-jobs:sha-${{ fromJSON(steps.meta-pipeline.outputs.json).labels['org.opencontainers.image.revision'] }}
             ${{ env.REGISTRY }}/${{ github.repository }}/spark-jobs:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -168,7 +168,7 @@ jobs:
       - name: Scan pipeline image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta-pipeline.outputs.version }}
           format: table
           severity: CRITICAL
           exit-code: '0'
