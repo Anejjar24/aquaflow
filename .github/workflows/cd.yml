@@ -43,6 +43,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.tag.outputs.value }}
       short_sha: ${{ steps.sha.outputs.value }}
+      repo_lower: ${{ steps.repo.outputs.lower }}
 
     steps:
       - name: Short SHA
@@ -58,6 +59,10 @@ jobs:
           else
             echo "value=sha-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
           fi
+
+      - name: Lowercase repository name (GHCR requires lowercase)
+        id: repo
+        run: echo "lower=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
   # ── Build & publish all images ───────────────────────────────────────────────
   # (runs only on push-triggered deploys; workflow_dispatch assumes images exist)
@@ -100,14 +105,14 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push ${{ matrix.service }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image_suffix }}:${{ needs.setup.outputs.image_tag }}
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image_suffix }}:latest
+            ${{ env.REGISTRY }}/${{ needs.setup.outputs.repo_lower }}/${{ matrix.image_suffix }}:${{ needs.setup.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ needs.setup.outputs.repo_lower }}/${{ matrix.image_suffix }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -306,7 +311,7 @@ jobs:
         if: success()
         run: |
           for SVC in backend frontend data-pipeline; do
-            IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/${SVC}"
+            IMAGE="${{ env.REGISTRY }}/${{ needs.setup.outputs.repo_lower }}/${SVC}"
             docker pull "${IMAGE}:${{ needs.setup.outputs.image_tag }}"
             docker tag "${IMAGE}:${{ needs.setup.outputs.image_tag }}" "${IMAGE}:stable"
             docker push "${IMAGE}:stable"
