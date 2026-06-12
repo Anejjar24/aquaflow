@@ -1,5 +1,6 @@
 # Dependabot — automated dependency updates for AquaFlow
-# Opens PRs automatically for outdated dependencies
+# Major version bumps are ALWAYS blocked — they require manual migration.
+# Only patch and minor updates are auto-proposed.
 
 version: 2
 
@@ -16,10 +17,9 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     ignore:
-      # Major version bumps require manual review
-      - dependency-name: "@nestjs/*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "typeorm"
+      # Block ALL major bumps — NestJS, TypeScript, TypeORM major versions
+      # are breaking changes that require manual migration and testing.
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
   # ── Frontend (React) ────────────────────────────────────────────────────────
@@ -34,7 +34,8 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     ignore:
-      # Major version bumps require manual testing — UI breaking changes
+      # Block ALL major bumps — react-leaflet 4→5, react-router 6→7,
+      # react 18→19 etc. all have breaking API changes.
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
@@ -50,7 +51,11 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     ignore:
-      # botocore must be bumped together with boto3 — never independently
+      # Block ALL major bumps — kafka-python 2→3, pyspark major versions
+      # have breaking API changes.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # botocore must always be bumped together with boto3
       - dependency-name: "botocore"
         update-types: ["version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "boto3"
