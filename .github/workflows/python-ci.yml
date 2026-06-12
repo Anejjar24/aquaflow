@@ -12,49 +12,61 @@ on:
       - 'data-pipeline/**'
       - '.github/workflows/python-ci.yml'
 
-jobs:
-  lint-and-test:
-    name: Lint & Test
-    runs-on: ubuntu-latest
+env:
+  PYTHON_VERSION: '3.11'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/data-pipeline
 
+jobs:
+  # ── Job 1: Lint & Test ───────────────────────────────────────────────────────
+  lint-and-test:
+    name: Lint & Test (57 cases)
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: data-pipeline
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
       - name: Install runtime dependencies
         run: pip install -r requirements.txt
 
       - name: Install dev dependencies
-        run: pip install flake8 pytest pytest-cov pyspark==3.5.0
+        run: pip install flake8 pytest pytest-cov pytest-mock pyspark==3.5.0
 
-      # Only lint the pure-Python archival pipeline (no PySpark dependency)
-      - name: Lint with flake8
+      - name: Lint — syntax errors and undefined names
         run: |
-          # Syntax errors and undefined names on the archival pipeline
           flake8 kafka_to_minio.py \
-            --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Style check on all sources (warnings only — does not fail the build)
+            --count --select=E9,F63,F7,F82 \
+            --show-source --statistics
+
+      - name: Lint — style check (warnings only)
+        run: |
           flake8 kafka_to_minio.py \
-            --count --max-line-length=120 --statistics --exit-zero
+            --count --max-line-length=120 \
+            --statistics --exit-zero
 
       - name: Run unit tests with coverage
         run: |
-          python -m pytest tests/test_kafka_to_minio.py tests/test_anomaly_detection.py \
+          python -m pytest \
+            tests/test_kafka_to_minio.py \
+            tests/test_anomaly_detection.py \
+            --ignore=tests/test_aggregate_kpis.py \
             --tb=short \
             --cov=. \
             --cov-report=xml:coverage.xml \
             --cov-report=term-missing \
-            --ignore=tests/test_aggregate_kpis.py
+            -v
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -63,3 +75,101 @@ jobs:
           name: python-coverage
           path: data-pipeline/coverage.xml
           retention-days: 14
+
+  # ── Job 2: Security scan ─────────────────────────────────────────────────────
+  security-scan:
+    name: Security Scan (Trivy + Safety)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install safety
+        run: pip install safety
+
+      - name: Dependency vulnerability check
+        run: safety check -r data-pipeline/requirements.txt || true
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: data-pipeline/
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+          ignore-unfixed: true
+
+  # ── Job 3: Docker build + push to GHCR ──────────────────────────────────────
+  docker-build:
+    name: Docker Build & Push (GHCR)
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, security-scan]
+    if: >
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' ||
+       github.ref == 'refs/heads/master' ||
+       github.ref == 'refs/heads/develop')
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (kafka-to-minio)
+        id: meta-pipeline
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push kafka-to-minio image
+        uses: docker/build-push-action@v5
+        with:
+          context: data-pipeline
+          file: data-pipeline/Dockerfile
+          push: true
+          tags: ${{ steps.meta-pipeline.outputs.tags }}
+          labels: ${{ steps.meta-pipeline.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Spark jobs image
+        uses: docker/build-push-action@v5
+        with:
+          context: data-pipeline
+          file: data-pipeline/spark_jobs/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/spark-jobs:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/spark-jobs:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan pipeline image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          format: table
+          severity: CRITICAL
+          exit-code: '0'
+          ignore-unfixed: true

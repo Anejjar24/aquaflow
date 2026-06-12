@@ -1,0 +1,32 @@
+# Gitleaks configuration for AquaFlow
+# Allowlist CI test credentials that are intentionally non-secret placeholders
+
+title = "AquaFlow Gitleaks Config"
+
+[allowlist]
+  description = "CI placeholder secrets — not real credentials"
+  regexes = [
+    # CI workflow test JWT secrets (not real secrets)
+    '''ci-test-jwt-secret-minimum-32-characters''',
+    '''ci-test-refresh-secret-minimum-32-characters''',
+    # Integration test JWT secret
+    '''jwt-integration-test-secret''',
+    # .env.example placeholder values
+    '''change_me_to_a_random_32_char_string''',
+    '''aquaflow123''',
+    # Explicit example/placeholder patterns
+    '''your_.*_here''',
+    '''CHANGE_ME''',
+    '''example\.com''',
+  ]
+  paths = [
+    # Allow secrets in example env files (they're templates)
+    '''.env.example''',
+    '''backend/.env.example''',
+    '''frontend/.env.example''',
+    # Allow in test files (test credentials only)
+    '''test/''',
+    '''jest\..+\.config\.js''',
+    # Allow in CI workflow files (test env vars)
+    '''.github/workflows/''',
+  ]
