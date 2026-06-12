@@ -35,7 +35,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Install dev dependencies
-        run: pip install flake8 pytest pytest-cov
+        run: pip install flake8 pytest pytest-cov pyspark==3.5.0
 
       # Only lint the pure-Python archival pipeline (no PySpark dependency)
       - name: Lint with flake8

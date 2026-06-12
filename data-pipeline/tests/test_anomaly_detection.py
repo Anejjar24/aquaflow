@@ -15,6 +15,13 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spark_jobs"))
 
+# Detect whether pyspark is importable (needed for schema/config tests)
+try:
+    import pyspark  # noqa: F401
+    PYSPARK_AVAILABLE = True
+except ImportError:
+    PYSPARK_AVAILABLE = False
+
 # ── Pure-Python helpers mirroring the Spark logic ─────────────────────────────
 # We extract the core z-score math so it can be tested without Spark.
 
@@ -116,6 +123,7 @@ class TestSeverityMapping(unittest.TestCase):
         self.assertEqual(self._severity(10.0), "CRITICAL")
 
 
+@unittest.skipUnless(PYSPARK_AVAILABLE, "pyspark not installed — skipped in CI without pyspark dep")
 class TestStreamingAnomalyDetectorConfig(unittest.TestCase):
     """Verify that the streaming job loads configuration from environment."""
 
@@ -150,6 +158,7 @@ class TestStreamingAnomalyDetectorConfig(unittest.TestCase):
             importlib.reload(sad)
 
 
+@unittest.skipUnless(PYSPARK_AVAILABLE, "pyspark not installed — skipped in CI without pyspark dep")
 class TestReadingSchema(unittest.TestCase):
     """Verify the Spark schema has required fields."""
 
